@@ -1,0 +1,1380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Agent System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0f1a;
+            --bg-secondary: #111827;
+            --card: #151d2e;
+            --card-hover: #1a2540;
+            --border: #1e2d4a;
+            --fg: #e8edf5;
+            --muted: #6b7a99;
+            --accent: #00e5a0;
+            --accent-dim: rgba(0,229,160,0.15);
+            --agent-coordinator: #00e5a0;
+            --agent-researcher: #f59e0b;
+            --agent-coder: #06b6d4;
+            --agent-reviewer: #f43f5e;
+            --agent-data: #a78bfa;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+            background: var(--bg);
+            color: var(--fg);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* === Background Atmosphere === */
+        .bg-atmosphere {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+        }
+        .bg-atmosphere::before {
+            content: '';
+            position: absolute;
+            top: -20%;
+            left: -10%;
+            width: 60%;
+            height: 60%;
+            background: radial-gradient(ellipse, rgba(0,229,160,0.06) 0%, transparent 70%);
+            animation: floatBlob 20s ease-in-out infinite;
+        }
+        .bg-atmosphere::after {
+            content: '';
+            position: absolute;
+            bottom: -20%;
+            right: -10%;
+            width: 50%;
+            height: 50%;
+            background: radial-gradient(ellipse, rgba(6,182,212,0.05) 0%, transparent 70%);
+            animation: floatBlob 25s ease-in-out infinite reverse;
+        }
+        @keyframes floatBlob {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            33% { transform: translate(30px, -40px) scale(1.1); }
+            66% { transform: translate(-20px, 30px) scale(0.95); }
+        }
+
+        /* === Grid Pattern === */
+        .grid-pattern {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            background-image:
+                linear-gradient(rgba(30,45,74,0.3) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(30,45,74,0.3) 1px, transparent 1px);
+            background-size: 60px 60px;
+            mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, black 20%, transparent 100%);
+        }
+
+        /* === Scrollbar === */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg-secondary); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+        /* === Agent Node Styles === */
+        .agent-node {
+            position: relative;
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px;
+            background: var(--card);
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+        .agent-node::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            border-radius: 16px 16px 0 0;
+        }
+        .agent-node:hover {
+            background: var(--card-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        .agent-node.coordinator::before { background: var(--agent-coordinator); }
+        .agent-node.researcher::before { background: var(--agent-researcher); }
+        .agent-node.coder::before { background: var(--agent-coder); }
+        .agent-node.reviewer::before { background: var(--agent-reviewer); }
+        .agent-node.data::before { background: var(--agent-data); }
+
+        /* Agent active pulse */
+        .agent-node.active {
+            animation: agentPulse 1.5s ease-in-out;
+        }
+        @keyframes agentPulse {
+            0% { box-shadow: 0 0 0 0 rgba(0,229,160,0.3); }
+            50% { box-shadow: 0 0 20px 4px rgba(0,229,160,0.15); }
+            100% { box-shadow: 0 0 0 0 rgba(0,229,160,0); }
+        }
+
+        .agent-icon-wrap {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+        /* === Status Badge === */
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .status-idle { background: rgba(107,122,153,0.2); color: var(--muted); }
+        .status-working { background: var(--accent-dim); color: var(--accent); }
+        .status-waiting { background: rgba(245,158,11,0.15); color: #f59e0b; }
+        .status-done { background: rgba(6,182,212,0.15); color: #06b6d4; }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+        }
+        .status-idle .status-dot { background: var(--muted); }
+        .status-working .status-dot { background: var(--accent); animation: blink 1s infinite; }
+        .status-waiting .status-dot { background: #f59e0b; animation: blink 1.5s infinite; }
+        .status-done .status-dot { background: #06b6d4; }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        /* === Task Card === */
+        .task-card {
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 14px 16px;
+            background: var(--card);
+            transition: all 0.3s ease;
+        }
+        .task-card:hover {
+            background: var(--card-hover);
+            border-color: rgba(0,229,160,0.3);
+        }
+
+        /* === Log Entry === */
+        .log-entry {
+            padding: 8px 12px;
+            border-left: 3px solid var(--border);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            transition: all 0.3s ease;
+            animation: logSlideIn 0.3s ease-out;
+        }
+        .log-entry:hover { background: rgba(255,255,255,0.02); }
+        .log-entry.log-info { border-left-color: var(--accent); }
+        .log-entry.log-delegate { border-left-color: #f59e0b; }
+        .log-entry.log-complete { border-left-color: #06b6d4; }
+        .log-entry.log-error { border-left-color: #f43f5e; }
+        .log-entry.log-comm { border-left-color: #a78bfa; }
+
+        @keyframes logSlideIn {
+            from { opacity: 0; transform: translateX(-10px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        /* === Canvas Overlay === */
+        #networkCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        /* === Button === */
+        .btn-primary {
+            background: var(--accent);
+            color: var(--bg);
+            font-weight: 600;
+            padding: 10px 20px;
+            border-radius: 10px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 14px;
+        }
+        .btn-primary:hover {
+            background: #00cc8e;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 16px rgba(0,229,160,0.25);
+        }
+        .btn-primary:active { transform: translateY(0); }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--fg);
+            font-weight: 500;
+            padding: 10px 20px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 14px;
+        }
+        .btn-secondary:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: var(--accent-dim);
+        }
+
+        /* === Input === */
+        .input-field {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 10px 14px;
+            color: var(--fg);
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 14px;
+            width: 100%;
+            transition: border-color 0.2s ease;
+        }
+        .input-field:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-dim);
+        }
+        .input-field::placeholder { color: var(--muted); }
+
+        select.input-field {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7a99' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 36px;
+        }
+
+        /* === Message Animation === */
+        .msg-particle {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        /* === Section Heading === */
+        .section-heading {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--muted);
+            margin-bottom: 16px;
+        }
+        .section-heading::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+        }
+
+        /* === Toast === */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .toast {
+            padding: 12px 20px;
+            border-radius: 10px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            font-size: 13px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            animation: toastIn 0.3s ease-out;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .toast.toast-out { animation: toastOut 0.3s ease-in forwards; }
+        @keyframes toastIn { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+        @keyframes toastOut { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(40px); } }
+
+        /* === Stat Card === */
+        .stat-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px 20px;
+            transition: all 0.3s ease;
+        }
+        .stat-card:hover {
+            border-color: rgba(0,229,160,0.3);
+            transform: translateY(-1px);
+        }
+
+        /* === Communication Link Line === */
+        .comm-link {
+            stroke-dasharray: 6 4;
+            animation: dashMove 1s linear infinite;
+        }
+        @keyframes dashMove {
+            to { stroke-dashoffset: -10; }
+        }
+
+        /* === Responsive === */
+        @media (max-width: 1024px) {
+            .main-grid { grid-template-columns: 1fr !important; }
+            .agent-grid { grid-template-columns: repeat(2, 1fr) !important; }
+        }
+        @media (max-width: 640px) {
+            .agent-grid { grid-template-columns: 1fr !important; }
+        }
+
+        /* === Performance bar === */
+        .perf-bar {
+            height: 4px;
+            border-radius: 2px;
+            background: var(--border);
+            overflow: hidden;
+        }
+        .perf-bar-fill {
+            height: 100%;
+            border-radius: 2px;
+            transition: width 0.6s ease;
+        }
+
+        /* === Reduced motion === */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-atmosphere"></div>
+    <div class="grid-pattern"></div>
+    <div class="toast-container" id="toastContainer"></div>
+
+    <div style="position:relative; z-index:1;">
+
+        <!-- ====== HEADER ====== -->
+        <header style="border-bottom:1px solid var(--border); background:rgba(10,15,26,0.85); backdrop-filter:blur(12px); position:sticky; top:0; z-index:50;">
+            <div style="max-width:1440px; margin:0 auto; padding:14px 24px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div style="width:36px; height:36px; border-radius:10px; background:var(--accent-dim); display:flex; align-items:center; justify-content:center;">
+                        <i class="fas fa-project-diagram" style="color:var(--accent); font-size:16px;"></i>
+                    </div>
+                    <div>
+                        <h1 style="font-size:18px; font-weight:700; letter-spacing:-0.5px;">Multi-Agent System</h1>
+                        <p style="font-size:11px; color:var(--muted); margin-top:1px;">Separate Agents &middot; Communication Layer &middot; Task Delegation</p>
+                    </div>
+                </div>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div class="status-badge status-working" id="systemStatus">
+                        <span class="status-dot"></span>
+                        <span>System Online</span>
+                    </div>
+                    <button class="btn-secondary" onclick="resetSystem()" style="padding:8px 14px; font-size:12px;">
+                        <i class="fas fa-rotate-right" style="margin-right:4px;"></i> Reset
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- ====== STATS BAR ====== -->
+        <section style="max-width:1440px; margin:0 auto; padding:20px 24px 0;">
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px;" id="statsBar">
+                <!-- Stats injected by JS -->
+            </div>
+        </section>
+
+        <!-- ====== MAIN CONTENT ====== -->
+        <main style="max-width:1440px; margin:0 auto; padding:20px 24px 40px;">
+            <div class="main-grid" style="display:grid; grid-template-columns:1fr 380px; gap:20px;">
+
+                <!-- LEFT COLUMN -->
+                <div style="display:flex; flex-direction:column; gap:20px;">
+
+                    <!-- Agent Network Visualization -->
+                    <section>
+                        <div class="section-heading">
+                            <i class="fas fa-circle-nodes" style="color:var(--accent);"></i>
+                            <span>Agent Network</span>
+                        </div>
+                        <div style="position:relative; background:var(--card); border:1px solid var(--border); border-radius:16px; overflow:hidden; min-height:320px;" id="networkViz">
+                            <canvas id="networkCanvas"></canvas>
+                            <div style="position:relative; z-index:2; padding:20px;">
+                                <div class="agent-grid" style="display:grid; grid-template-columns:repeat(3, 1fr); gap:14px;" id="agentGrid">
+                                    <!-- Agent nodes injected by JS -->
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Communication Layer -->
+                    <section>
+                        <div class="section-heading">
+                            <i class="fas fa-satellite-dish" style="color:#a78bfa;"></i>
+                            <span>Communication Layer</span>
+                        </div>
+                        <div style="background:var(--card); border:1px solid var(--border); border-radius:16px; padding:20px;">
+                            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <div style="width:8px; height:8px; border-radius:50%; background:var(--accent); animation:blink 1.5s infinite;"></div>
+                                    <span style="font-size:13px; font-weight:500;">Message Bus — Active</span>
+                                </div>
+                                <span style="font-size:11px; color:var(--muted);" id="msgCount">0 messages</span>
+                            </div>
+                            <div id="commLog" style="max-height:240px; overflow-y:auto; display:flex; flex-direction:column; gap:6px;">
+                                <div style="text-align:center; padding:30px; color:var(--muted); font-size:13px;">
+                                    <i class="fas fa-satellite-dish" style="font-size:24px; margin-bottom:8px; display:block; opacity:0.4;"></i>
+                                    Waiting for agent communications...
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Activity Log -->
+                    <section>
+                        <div class="section-heading">
+                            <i class="fas fa-terminal" style="color:#06b6d4;"></i>
+                            <span>System Log</span>
+                        </div>
+                        <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:16px; padding:16px; max-height:280px; overflow-y:auto;" id="systemLog">
+                            <div class="log-entry log-info">
+                                <span style="color:var(--muted);">[INIT]</span> Multi-Agent System initialized. All agents standing by.
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
+                <!-- RIGHT COLUMN -->
+                <div style="display:flex; flex-direction:column; gap:20px;">
+
+                    <!-- Task Submission -->
+                    <section>
+                        <div class="section-heading">
+                            <i class="fas fa-plus-circle" style="color:var(--accent);"></i>
+                            <span>Submit Task</span>
+                        </div>
+                        <div style="background:var(--card); border:1px solid var(--border); border-radius:16px; padding:20px;">
+                            <div style="display:flex; flex-direction:column; gap:12px;">
+                                <div>
+                                    <label style="font-size:12px; font-weight:500; color:var(--muted); display:block; margin-bottom:6px;">Task Name</label>
+                                    <input class="input-field" id="taskName" placeholder="e.g. Analyze sales data" aria-label="Task name">
+                                </div>
+                                <div>
+                                    <label style="font-size:12px; font-weight:500; color:var(--muted); display:block; margin-bottom:6px;">Description</label>
+                                    <textarea class="input-field" id="taskDesc" rows="3" placeholder="Describe what needs to be done..." style="resize:vertical;" aria-label="Task description"></textarea>
+                                </div>
+                                <div>
+                                    <label style="font-size:12px; font-weight:500; color:var(--muted); display:block; margin-bottom:6px;">Priority</label>
+                                    <select class="input-field" id="taskPriority" aria-label="Task priority">
+                                        <option value="low">Low</option>
+                                        <option value="medium" selected>Medium</option>
+                                        <option value="high">High</option>
+                                        <option value="critical">Critical</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="font-size:12px; font-weight:500; color:var(--muted); display:block; margin-bottom:6px;">Target Agent (optional)</label>
+                                    <select class="input-field" id="taskAgent" aria-label="Target agent">
+                                        <option value="auto">Auto-Assign (Coordinator decides)</option>
+                                        <option value="coordinator">Coordinator</option>
+                                        <option value="researcher">Researcher</option>
+                                        <option value="coder">Coder</option>
+                                        <option value="reviewer">Reviewer</option>
+                                        <option value="data">Data Analyst</option>
+                                    </select>
+                                </div>
+                                <button class="btn-primary" onclick="submitTask()" style="width:100%; margin-top:4px;">
+                                    <i class="fas fa-paper-plane" style="margin-right:6px;"></i> Submit Task
+                                </button>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Task Queue -->
+                    <section>
+                        <div class="section-heading">
+                            <i class="fas fa-list-check" style="color:#f59e0b;"></i>
+                            <span>Task Queue</span>
+                        </div>
+                        <div style="display:flex; flex-direction:column; gap:8px;" id="taskQueue">
+                            <div style="text-align:center; padding:24px; color:var(--muted); font-size:13px; background:var(--card); border:1px solid var(--border); border-radius:12px;">
+                                <i class="fas fa-inbox" style="font-size:20px; margin-bottom:6px; display:block; opacity:0.4;"></i>
+                                No tasks in queue
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Quick Actions -->
+                    <section>
+                        <div class="section-heading">
+                            <i class="fas fa-bolt" style="color:#f43f5e;"></i>
+                            <span>Quick Demo</span>
+                        </div>
+                        <div style="display:flex; flex-direction:column; gap:8px;">
+                            <button class="btn-secondary" onclick="runDemoSequence()" style="width:100%; text-align:left; padding:12px 16px;">
+                                <i class="fas fa-play" style="margin-right:8px; color:var(--accent);"></i> Run Full Demo Sequence
+                            </button>
+                            <button class="btn-secondary" onclick="submitRandomTask()" style="width:100%; text-align:left; padding:12px 16px;">
+                                <i class="fas fa-shuffle" style="margin-right:8px; color:#f59e0b;"></i> Submit Random Task
+                            </button>
+                            <button class="btn-secondary" onclick="broadcastMessage()" style="width:100%; text-align:left; padding:12px 16px;">
+                                <i class="fas fa-tower-broadcast" style="margin-right:8px; color:#a78bfa;"></i> Broadcast Message
+                            </button>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </main>
+    </div>
+
+<script>
+// =============================================
+// STEP 1: AGENT DEFINITIONS
+// Har agent ka apna naam, type, capability, aur status
+// =============================================
+const AGENT_DEFS = [
+    {
+        id: 'coordinator',
+        name: 'Coordinator',
+        type: 'coordinator',
+        icon: 'fa-crown',
+        color: '#00e5a0',
+        capabilities: ['task-routing', 'delegation', 'monitoring', 'orchestration'],
+        description: 'Routes tasks to the best-fit agent and monitors progress.'
+    },
+    {
+        id: 'researcher',
+        name: 'Researcher',
+        type: 'researcher',
+        icon: 'fa-magnifying-glass',
+        color: '#f59e0b',
+        capabilities: ['research', 'analysis', 'information-gathering', 'fact-checking'],
+        description: 'Gathers information, analyzes data, and produces reports.'
+    },
+    {
+        id: 'coder',
+        name: 'Coder',
+        type: 'coder',
+        icon: 'fa-code',
+        color: '#06b6d4',
+        capabilities: ['coding', 'implementation', 'debugging', 'refactoring'],
+        description: 'Writes, tests, and debugs code implementations.'
+    },
+    {
+        id: 'reviewer',
+        name: 'Reviewer',
+        type: 'reviewer',
+        icon: 'fa-shield-halved',
+        color: '#f43f5e',
+        capabilities: ['review', 'quality-assurance', 'testing', 'validation'],
+        description: 'Reviews outputs, ensures quality, and validates results.'
+    },
+    {
+        id: 'data',
+        name: 'Data Analyst',
+        type: 'data',
+        icon: 'fa-chart-line',
+        color: '#a78bfa',
+        capabilities: ['data-processing', 'statistics', 'visualization', 'insights'],
+        description: 'Processes datasets, runs statistics, and generates insights.'
+    }
+];
+
+// =============================================
+// STEP 2: AGENT CLASS — Separate Agent banaya
+// Har agent independent hai, apna state rakhta hai
+// =============================================
+class Agent {
+    constructor(def) {
+        this.id = def.id;
+        this.name = def.name;
+        this.type = def.type;
+        this.icon = def.icon;
+        this.color = def.color;
+        this.capabilities = def.capabilities;
+        this.description = def.description;
+        this.status = 'idle'; // idle, working, waiting, done
+        this.currentTask = null;
+        this.completedTasks = 0;
+        this.messageQueue = [];
+        this.performance = Math.floor(Math.random() * 20) + 80; // 80-100
+    }
+
+    // Agent ko task assign karna
+    assignTask(task) {
+        this.status = 'working';
+        this.currentTask = task;
+        task.status = 'in-progress';
+        task.assignedTo = this.id;
+        this.messageQueue.push({
+            type: 'task-assigned',
+            from: 'coordinator',
+            to: this.id,
+            content: `Task "${task.name}" assigned to ${this.name}`,
+            timestamp: Date.now()
+        });
+    }
+
+    // Agent ka task complete karna
+    completeTask() {
+        if (!this.currentTask) return null;
+        const task = this.currentTask;
+        task.status = 'completed';
+        task.completedAt = Date.now();
+        this.completedTasks++;
+        this.status = 'done';
+        this.currentTask = null;
+        // Thodi der baad idle ho jao
+        setTimeout(() => { this.status = 'idle'; updateUI(); }, 2000);
+        return task;
+    }
+
+    // Agent ko message bhejna
+    receiveMessage(msg) {
+        this.messageQueue.push(msg);
+    }
+
+    // Kya ye agent ye task kar sakta hai?
+    canHandle(taskKeywords) {
+        return taskKeywords.some(kw =>
+            this.capabilities.some(cap => cap.includes(kw) || kw.includes(cap))
+        );
+    }
+}
+
+// =============================================
+// STEP 3: COMMUNICATION LAYER
+// Agents ke beech message passing ka system
+// =============================================
+class CommunicationLayer {
+    constructor() {
+        this.messages = [];
+        this.listeners = [];
+        this.messageCount = 0;
+    }
+
+    // Message bhejna ek agent se doosre ko
+    send(from, to, type, content) {
+        const msg = {
+            id: ++this.messageCount,
+            from,
+            to,
+            type,       // info, delegate, complete, error, comm
+            content,
+            timestamp: Date.now()
+        };
+        this.messages.push(msg);
+
+        // Listeners ko notify karna
+        this.listeners.forEach(fn => fn(msg));
+
+        // UI update
+        updateCommLog(msg);
+        updateStats();
+        return msg;
+    }
+
+    // Broadcast — sab ko message bhejna
+    broadcast(from, content) {
+        const msgs = [];
+        AGENT_DEFS.forEach(def => {
+            if (def.id !== from) {
+                msgs.push(this.send(from, def.id, 'comm', content));
+            }
+        });
+        return msgs;
+    }
+
+    // Listener add karna
+    onMessage(fn) {
+        this.listeners.push(fn);
+    }
+}
+
+// =============================================
+// STEP 4: TASK DELEGATION SYSTEM
+// Coordinator tasks ko analyze karke suitable agent ko assign karta hai
+// =============================================
+class TaskDelegator {
+    constructor(agents, commLayer) {
+        this.agents = agents;         // Map of agent instances
+        this.comm = commLayer;
+        this.taskQueue = [];
+        this.completedTasks = [];
+        this.taskIdCounter = 0;
+
+        // Task keywords mapping — kis type ka task kis agent ko jayega
+        this.taskRouting = {
+            researcher: ['research', 'analysis', 'analyze', 'investigate', 'gather', 'information', 'find', 'search', 'report', 'study'],
+            coder: ['code', 'implement', 'build', 'develop', 'debug', 'fix', 'program', 'create', 'write', 'refactor', 'deploy'],
+            reviewer: ['review', 'check', 'verify', 'validate', 'test', 'quality', 'qa', 'audit', 'inspect', 'ensure'],
+            data: ['data', 'process', 'statistics', 'visualize', 'chart', 'insight', 'dataset', 'metric', 'trend', 'numbers', 'calculate']
+        };
+    }
+
+    // Naya task add karna
+    addTask(name, description, priority, targetAgent) {
+        const task = {
+            id: ++this.taskIdCounter,
+            name,
+            description,
+            priority,
+            targetAgent: targetAgent || 'auto',
+            status: 'queued',       // queued, in-progress, completed, failed
+            assignedTo: null,
+            createdAt: Date.now(),
+            completedAt: null
+        };
+        this.taskQueue.push(task);
+        this.comm.send('system', 'coordinator', 'info', `New task queued: "${name}" [${priority}]`);
+        addLog('info', `Task #${task.id} "${name}" added to queue [Priority: ${priority}]`);
+
+        // Agar auto-assign hai toh turant delegate karo
+        if (targetAgent === 'auto') {
+            this.delegateNext();
+        } else {
+            // Specific agent ko assign karo
+            this.assignToAgent(task, targetAgent);
+        }
+
+        updateUI();
+        return task;
+    }
+
+    // Coordinator task ko suitable agent ko delegate karta hai
+    delegateNext() {
+        const queuedTasks = this.taskQueue.filter(t => t.status === 'queued');
+        if (queuedTasks.length === 0) return;
+
+        for (const task of queuedTasks) {
+            const bestAgent = this.findBestAgent(task);
+            if (bestAgent) {
+                this.assignToAgent(task, bestAgent.id);
+            } else {
+                // Sab busy hain, wait karo
+                addLog('info', `Task #${task.id} waiting — all agents busy.`);
+            }
+        }
+    }
+
+    // Best agent dhundo — task keywords match karo
+    findBestAgent(task) {
+        const keywords = (task.name + ' ' + task.description).toLowerCase().split(/\s+/);
+        let bestMatch = null;
+        let bestScore = -1;
+
+        for (const [agentId, agentKeywords] of Object.entries(this.taskRouting)) {
+            const agent = this.agents.get(agentId);
+            if (!agent || agent.status === 'working') continue; // Busy agent skip
+
+            const score = keywords.filter(kw => agentKeywords.some(ak => ak.includes(kw) || kw.includes(ak))).length;
+            if (score > bestScore) {
+                bestScore = score;
+                bestMatch = agent;
+            }
+        }
+
+        // Agar koi match nahi mila toh kisi idle agent ko do
+        if (!bestMatch) {
+            for (const [id, agent] of this.agents) {
+                if (agent.status === 'idle' && id !== 'coordinator') {
+                    bestMatch = agent;
+                    break;
+                }
+            }
+        }
+
+        return bestMatch;
+    }
+
+    // Task ko specific agent ko assign karo
+    assignToAgent(task, agentId) {
+        const agent = this.agents.get(agentId);
+        if (!agent) {
+            addLog('error', `Agent "${agentId}" not found!`);
+            return;
+        }
+        if (agent.status === 'working') {
+            addLog('info', `${agent.name} is busy. Task #${task.id} will wait.`);
+            return;
+        }
+
+        agent.assignTask(task);
+        this.comm.send('coordinator', agentId, 'delegate', `Delegated task #${task.id}: "${task.name}"`);
+        addLog('delegate', `Coordinator → ${agent.name}: Task #${task.id} "${task.name}"`);
+
+        // Animate the agent node
+        animateAgentNode(agentId);
+
+        // Simulate task completion (1.5 - 5 seconds)
+        const duration = 1500 + Math.random() * 3500;
+        setTimeout(() => {
+            const completed = agent.completeTask();
+            if (completed) {
+                this.comm.send(agentId, 'coordinator', 'complete', `Task #${task.id} completed by ${agent.name}`);
+                addLog('complete', `${agent.name} completed Task #${task.id}: "${task.name}"`);
+
+                // Reviewer ko bhejo for verification (agar coder/researcher/data ne kiya hai)
+                if (agentId !== 'reviewer' && agentId !== 'coordinator') {
+                    const reviewer = this.agents.get('reviewer');
+                    if (reviewer && reviewer.status === 'idle') {
+                        setTimeout(() => {
+                            const reviewTask = {
+                                id: ++this.taskIdCounter,
+                                name: `Review: ${task.name}`,
+                                description: `Review the output of task #${task.id}`,
+                                priority: task.priority,
+                                targetAgent: 'reviewer',
+                                status: 'queued',
+                                assignedTo: null,
+                                createdAt: Date.now(),
+                                completedAt: null
+                            };
+                            this.taskQueue.push(reviewTask);
+                            this.assignToAgent(reviewTask, 'reviewer');
+                            this.comm.send('coordinator', 'reviewer', 'delegate', `Review request for task #${task.id}`);
+                        }, 800);
+                    }
+                }
+
+                this.completedTasks.push(completed);
+                updateUI();
+                showToast(`${agent.name} completed: "${task.name}"`, agent.color);
+
+                // Agar queue mein aur tasks hain toh delegate karo
+                setTimeout(() => this.delegateNext(), 500);
+            }
+        }, duration);
+
+        updateUI();
+    }
+}
+
+// =============================================
+// STEP 5: SYSTEM INITIALIZATION
+// Sab agents banao, communication layer banao, delegator banao
+// =============================================
+const agents = new Map();
+AGENT_DEFS.forEach(def => agents.set(def.id, new Agent(def)));
+
+const commLayer = new CommunicationLayer();
+const delegator = new TaskDelegator(agents, commLayer);
+
+// =============================================
+// STEP 6: UI RENDERING FUNCTIONS
+// =============================================
+
+// Agent nodes render karo
+function renderAgents() {
+    const grid = document.getElementById('agentGrid');
+    grid.innerHTML = '';
+    agents.forEach((agent) => {
+        const statusClass = `status-${agent.status}`;
+        const statusLabel = agent.status.charAt(0).toUpperCase() + agent.status.slice(1);
+        const node = document.createElement('div');
+        node.className = `agent-node ${agent.type}`;
+        node.id = `agent-${agent.id}`;
+        node.innerHTML = `
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div class="agent-icon-wrap" style="background:${agent.color}20; color:${agent.color};">
+                        <i class="fas ${agent.icon}"></i>
+                    </div>
+                    <div>
+                        <div style="font-weight:600; font-size:14px;">${agent.name}</div>
+                        <div style="font-size:11px; color:var(--muted);">${agent.description.substring(0, 40)}...</div>
+                    </div>
+                </div>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+                <div class="status-badge ${statusClass}">
+                    <span class="status-dot"></span>
+                    <span>${statusLabel}</span>
+                </div>
+                <span style="font-size:11px; color:var(--muted);">${agent.completedTasks} done</span>
+            </div>
+            <div class="perf-bar">
+                <div class="perf-bar-fill" style="width:${agent.performance}%; background:${agent.color};"></div>
+            </div>
+            <div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:10px;">
+                ${agent.capabilities.map(c => `<span style="font-size:10px; padding:2px 8px; border-radius:6px; background:${agent.color}15; color:${agent.color}; border:1px solid ${agent.color}30;">${c}</span>`).join('')}
+            </div>
+            ${agent.currentTask ? `<div style="margin-top:10px; padding:8px 10px; background:rgba(0,0,0,0.2); border-radius:8px; font-size:11px;"><i class="fas fa-spinner fa-spin" style="margin-right:6px; color:${agent.color};"></i>${agent.currentTask.name}</div>` : ''}
+        `;
+        grid.appendChild(node);
+    });
+}
+
+// Stats render karo
+function renderStats() {
+    const bar = document.getElementById('statsBar');
+    const totalTasks = delegator.taskQueue.length;
+    const completed = delegator.completedTasks.length;
+    const inProgress = delegator.taskQueue.filter(t => t.status === 'in-progress').length;
+    const queued = delegator.taskQueue.filter(t => t.status === 'queued').length;
+    const workingAgents = [...agents.values()].filter(a => a.status === 'working').length;
+
+    const stats = [
+        { label: 'Total Tasks', value: totalTasks, icon: 'fa-list', color: '#00e5a0' },
+        { label: 'Completed', value: completed, icon: 'fa-check-circle', color: '#06b6d4' },
+        { label: 'In Progress', value: inProgress, icon: 'fa-spinner', color: '#f59e0b' },
+        { label: 'Queued', value: queued, icon: 'fa-clock', color: '#a78bfa' },
+        { label: 'Active Agents', value: `${workingAgents}/${agents.size}`, icon: 'fa-robot', color: '#f43f5e' },
+        { label: 'Messages', value: commLayer.messageCount, icon: 'fa-envelope', color: '#00e5a0' }
+    ];
+
+    bar.innerHTML = stats.map(s => `
+        <div class="stat-card">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                <i class="fas ${s.icon}" style="color:${s.color}; font-size:13px;"></i>
+                <span style="font-size:11px; color:var(--muted); font-weight:500;">${s.label}</span>
+            </div>
+            <div style="font-size:24px; font-weight:700; letter-spacing:-1px;">${s.value}</div>
+        </div>
+    `).join('');
+}
+
+// Task queue render karo
+function renderTaskQueue() {
+    const container = document.getElementById('taskQueue');
+    const tasks = delegator.taskQueue;
+    const activeTasks = tasks.filter(t => t.status !== 'completed');
+
+    if (activeTasks.length === 0) {
+        container.innerHTML = `
+            <div style="text-align:center; padding:24px; color:var(--muted); font-size:13px; background:var(--card); border:1px solid var(--border); border-radius:12px;">
+                <i class="fas fa-inbox" style="font-size:20px; margin-bottom:6px; display:block; opacity:0.4;"></i>
+                No tasks in queue
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = activeTasks.map(t => {
+        const priorityColors = { low: '#6b7a99', medium: '#f59e0b', high: '#f97316', critical: '#f43f5e' };
+        const statusColors = { queued: '#6b7a99', 'in-progress': '#00e5a0', completed: '#06b6d4', failed: '#f43f5e' };
+        const agent = t.assignedTo ? agents.get(t.assignedTo) : null;
+        return `
+            <div class="task-card">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+                    <span style="font-weight:600; font-size:13px;">#${t.id} ${t.name}</span>
+                    <span style="font-size:10px; padding:2px 8px; border-radius:6px; background:${priorityColors[t.priority]}20; color:${priorityColors[t.priority]}; border:1px solid ${priorityColors[t.priority]}40; text-transform:uppercase; font-weight:600;">${t.priority}</span>
+                </div>
+                <div style="font-size:11px; color:var(--muted); margin-bottom:8px;">${t.description.substring(0, 60)}${t.description.length > 60 ? '...' : ''}</div>
+                <div style="display:flex; align-items:center; justify-content:space-between;">
+                    <span style="font-size:10px; color:${statusColors[t.status]}; font-weight:600; text-transform:uppercase;">${t.status.replace('-', ' ')}</span>
+                    ${agent ? `<span style="font-size:10px; color:${agent.color};"><i class="fas ${agent.icon}" style="margin-right:3px;"></i>${agent.name}</span>` : ''}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// Communication log update
+function updateCommLog(msg) {
+    const container = document.getElementById('commLog');
+    // Initial placeholder remove karo
+    if (container.querySelector('div[style*="text-align:center"]')) {
+        container.innerHTML = '';
+    }
+
+    const fromAgent = agents.get(msg.from) || { name: msg.from, color: '#6b7a99', icon: 'fa-server' };
+    const toAgent = agents.get(msg.to) || { name: msg.to, color: '#6b7a99', icon: 'fa-server' };
+
+    const typeIcons = { info: 'fa-circle-info', delegate: 'fa-share', complete: 'fa-circle-check', error: 'fa-circle-exclamation', comm: 'fa-tower-broadcast' };
+    const typeColors = { info: '#00e5a0', delegate: '#f59e0b', complete: '#06b6d4', error: '#f43f5e', comm: '#a78bfa' };
+
+    const entry = document.createElement('div');
+    entry.style.cssText = `display:flex; align-items:flex-start; gap:10px; padding:10px 12px; background:rgba(0,0,0,0.2); border-radius:10px; animation:logSlideIn 0.3s ease-out;`;
+    entry.innerHTML = `
+        <i class="fas ${typeIcons[msg.type] || 'fa-message'}" style="color:${typeColors[msg.type]}; margin-top:2px; font-size:12px;"></i>
+        <div style="flex:1; min-width:0;">
+            <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                <span style="font-size:11px; font-weight:600; color:${fromAgent.color};">${fromAgent.name}</span>
+                <i class="fas fa-arrow-right" style="font-size:9px; color:var(--muted);"></i>
+                <span style="font-size:11px; font-weight:600; color:${toAgent.color};">${toAgent.name}</span>
+                <span style="font-size:10px; color:var(--muted); margin-left:auto;">${new Date(msg.timestamp).toLocaleTimeString()}</span>
+            </div>
+            <div style="font-size:12px; color:var(--fg); opacity:0.85;">${msg.content}</div>
+        </div>
+    `;
+    container.appendChild(entry);
+    container.scrollTop = container.scrollHeight;
+
+    document.getElementById('msgCount').textContent = `${commLayer.messageCount} messages`;
+}
+
+// =============================================
+// STEP 7: CANVAS NETWORK VISUALIZATION
+// Agents ke beech animated connections draw karna
+// =============================================
+const canvas = document.getElementById('networkCanvas');
+const ctx = canvas.getContext('2d');
+let canvasW, canvasH;
+let particles = [];
+let connections = [];
+
+function resizeCanvas() {
+    const viz = document.getElementById('networkViz');
+    canvasW = viz.offsetWidth;
+    canvasH = viz.offsetHeight;
+    canvas.width = canvasW * window.devicePixelRatio;
+    canvas.height = canvasH * window.devicePixelRatio;
+    canvas.style.width = canvasW + 'px';
+    canvas.style.height = canvasH + 'px';
+    ctx.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0);
+    buildConnections();
+}
+
+// Agent positions calculate karo for connections
+function getAgentPositions() {
+    const positions = {};
+    const grid = document.getElementById('agentGrid');
+    const viz = document.getElementById('networkViz');
+    const vizRect = viz.getBoundingClientRect();
+
+    agents.forEach((agent) => {
+        const node = document.getElementById(`agent-${agent.id}`);
+        if (node) {
+            const rect = node.getBoundingClientRect();
+            positions[agent.id] = {
+                x: rect.left - vizRect.left + rect.width / 2,
+                y: rect.top - vizRect.top + rect.height / 2
+            };
+        }
+    });
+    return positions;
+}
+
+function buildConnections() {
+    connections = [];
+    const pos = getAgentPositions();
+    // Coordinator sab se connected
+    const others = ['researcher', 'coder', 'reviewer', 'data'];
+    others.forEach(id => {
+        if (pos.coordinator && pos[id]) {
+            connections.push({ from: pos.coordinator, to: pos[id], fromId: 'coordinator', toId: id });
+        }
+    });
+    // Cross connections (lighter)
+    if (pos.researcher && pos.coder) connections.push({ from: pos.researcher, to: pos.coder, fromId: 'researcher', toId: 'coder', light: true });
+    if (pos.coder && pos.reviewer) connections.push({ from: pos.coder, to: pos.reviewer, fromId: 'coder', toId: 'reviewer', light: true });
+    if (pos.data && pos.reviewer) connections.push({ from: pos.data, to: pos.reviewer, fromId: 'data', toId: 'reviewer', light: true });
+}
+
+// Message particle bhejo (animated dot on connection line)
+function spawnParticle(fromId, toId, color) {
+    const pos = getAgentPositions();
+    if (!pos[fromId] || !pos[toId]) return;
+    particles.push({
+        from: pos[fromId],
+        to: pos[toId],
+        progress: 0,
+        color: color || '#00e5a0',
+        speed: 0.015 + Math.random() * 0.01
+    });
+}
+
+function drawCanvas() {
+    ctx.clearRect(0, 0, canvasW, canvasH);
+
+    // Connections draw karo
+    connections.forEach(conn => {
+        ctx.beginPath();
+        ctx.moveTo(conn.from.x, conn.from.y);
+        ctx.lineTo(conn.to.x, conn.to.y);
+        ctx.strokeStyle = conn.light ? 'rgba(30,45,74,0.4)' : 'rgba(30,45,74,0.7)';
+        ctx.lineWidth = conn.light ? 1 : 1.5;
+        ctx.setLineDash(conn.light ? [4, 6] : [6, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    });
+
+    // Particles draw karo
+    particles = particles.filter(p => {
+        p.progress += p.speed;
+        if (p.progress >= 1) return false;
+
+        const x = p.from.x + (p.to.x - p.from.x) * p.progress;
+        const y = p.from.y + (p.to.y - p.from.y) * p.progress;
+
+        // Glow
+        const gradient = ctx.createRadialGradient(x, y, 0, x, y, 12);
+        gradient.addColorStop(0, p.color + 'aa');
+        gradient.addColorStop(1, p.color + '00');
+        ctx.beginPath();
+        ctx.arc(x, y, 12, 0, Math.PI * 2);
+        ctx.fillStyle = gradient;
+        ctx.fill();
+
+        // Core dot
+        ctx.beginPath();
+        ctx.arc(x, y, 3, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.fill();
+
+        return true;
+    });
+
+    requestAnimationFrame(drawCanvas);
+}
+
+// =============================================
+// STEP 8: USER ACTIONS
+// =============================================
+
+// Task submit karna
+function submitTask() {
+    const name = document.getElementById('taskName').value.trim();
+    const desc = document.getElementById('taskDesc').value.trim();
+    const priority = document.getElementById('taskPriority').value;
+    const target = document.getElementById('taskAgent').value;
+
+    if (!name) {
+        showToast('Please enter a task name.', '#f43f5e');
+        document.getElementById('taskName').focus();
+        return;
+    }
+
+    delegator.addTask(name, desc || name, priority, target === 'auto' ? null : target);
+
+    // Form clear karo
+    document.getElementById('taskName').value = '';
+    document.getElementById('taskDesc').value = '';
+    document.getElementById('taskPriority').value = 'medium';
+    document.getElementById('taskAgent').value = 'auto';
+
+    showToast(`Task "${name}" submitted!`, '#00e5a0');
+}
+
+// Random task submit karna
+function submitRandomTask() {
+    const tasks = [
+        { name: 'Research market trends', desc: 'Analyze current market trends in AI sector', priority: 'high', agent: 'researcher' },
+        { name: 'Build REST API endpoint', desc: 'Implement user authentication API with JWT', priority: 'critical', agent: 'coder' },
+        { name: 'Review pull request #42', desc: 'Code review for the new payment module', priority: 'medium', agent: 'reviewer' },
+        { name: 'Process quarterly data', desc: 'Generate Q4 statistics and visualizations', priority: 'high', agent: 'data' },
+        { name: 'Investigate memory leak', desc: 'Debug and fix the memory leak in worker process', priority: 'critical', agent: 'coder' },
+        { name: 'Fact-check article claims', desc: 'Verify sources and claims in the research paper', priority: 'medium', agent: 'researcher' },
+        { name: 'Optimize database queries', desc: 'Refactor slow queries in the reporting module', priority: 'high', agent: 'coder' },
+        { name: 'Validate user inputs', desc: 'Security review of all user-facing input forms', priority: 'high', agent: 'reviewer' },
+        { name: 'Calculate conversion rates', desc: 'Process funnel data and compute conversion metrics', priority: 'medium', agent: 'data' },
+        { name: 'Deploy staging build', desc: 'Build and deploy the latest develop branch to staging', priority: 'low', agent: 'coder' },
+        { name: 'Analyze competitor features', desc: 'Research and document competitor product features', priority: 'medium', agent: 'researcher' },
+        { name: 'Generate monthly report', desc: 'Create visualizations and summary for stakeholders', priority: 'low', agent: 'data' },
+        { name: 'Run integration tests', desc: 'Execute full test suite on the new module', priority: 'high', agent: 'reviewer' },
+        { name: 'Update documentation', desc: 'Document the new API endpoints and usage examples', priority: 'low', agent: 'researcher' },
+        { name: 'Refactor auth module', desc: 'Clean up and modularize the authentication code', priority: 'medium', agent: 'coder' },
+    ];
+    const t = tasks[Math.floor(Math.random() * tasks.length)];
+    delegator.addTask(t.name, t.desc, t.priority, null);
+    showToast(`Random task: "${t.name}"`, '#f59e0b');
+}
+
+// Broadcast message
+function broadcastMessage() {
+    const messages = [
+        'Status check: Please report current progress.',
+        'New priority directive from management.',
+        'System maintenance scheduled in 30 minutes.',
+        'All agents: Sync your state immediately.',
+        'High-priority client request incoming.'
+    ];
+    const msg = messages[Math.floor(Math.random() * messages.length)];
+    commLayer.broadcast('coordinator', msg);
+    addLog('comm', `Coordinator broadcast: "${msg}"`);
+
+    // Particles spawn karo sab connections pe
+    const others = ['researcher', 'coder', 'reviewer', 'data'];
+    others.forEach(id => spawnParticle('coordinator', id, '#a78bfa'));
+
+    showToast('Broadcast sent to all agents.', '#a78bfa');
+}
+
+// Demo sequence chalana
+let demoRunning = false;
+async function runDemoSequence() {
+    if (demoRunning) {
+        showToast('Demo already running!', '#f43f5e');
+        return;
+    }
+    demoRunning = true;
+    showToast('Starting demo sequence...', '#00e5a0');
+
+    const steps = [
+        { name: 'Analyze user behavior data', desc: 'Process and analyze user session recordings', priority: 'high' },
+        { name: 'Implement search feature', desc: 'Build full-text search with filters', priority: 'critical' },
+        { name: 'Review security policies', desc: 'Audit access control and authentication flows', priority: 'high' },
+        { name: 'Generate revenue dashboard', desc: 'Create interactive charts for revenue metrics', priority: 'medium' },
+        { name: 'Research competitor pricing', desc: 'Study and compare pricing models', priority: 'medium' },
+        { name: 'Fix pagination bug', desc: 'Resolve offset issue in paginated results', priority: 'high' },
+    ];
+
+    for (let i = 0; i < steps.length; i++) {
+        const s = steps[i];
+        delegator.addTask(s.name, s.desc, s.priority, null);
+        await new Promise(r => setTimeout(r, 2000 + Math.random() * 1500));
+    }
+
+    demoRunning = false;
+}
+
+// System reset
+function resetSystem() {
+    agents.forEach(agent => {
+        agent.status = 'idle';
+        agent.currentTask = null;
+        agent.completedTasks = 0;
+        agent.messageQueue = [];
+    });
+    delegator.taskQueue = [];
+    delegator.completedTasks = [];
+    delegator.taskIdCounter = 0;
+    commLayer.messages = [];
+    commLayer.messageCount = 0;
+
+    document.getElementById('commLog').innerHTML = `
+        <div style="text-align:center; padding:30px; color:var(--muted); font-size:13px;">
+            <i class="fas fa-satellite-dish" style="font-size:24px; margin-bottom:8px; display:block; opacity:0.4;"></i>
+            Waiting for agent communications...
+        </div>
+    `;
+    document.getElementById('systemLog').innerHTML = `
+        <div class="log-entry log-info">
+            <span style="color:var(--muted);">[INIT]</span> Multi-Agent System reset. All agents standing by.
+        </div>
+    `;
+    particles = [];
+    updateUI();
+    showToast('System reset complete.', '#06b6d4');
+}
+
+// =============================================
+// STEP 9: HELPER FUNCTIONS
+// =============================================
+
+// UI update — sab components re-render karo
+function updateUI() {
+    renderAgents();
+    renderStats();
+    renderTaskQueue();
+    // Connections rebuild karo (agent positions change ho sakti hain)
+    setTimeout(buildConnections, 100);
+}
+
+// System log mein entry add karo
+function addLog(type, message) {
+    const log = document.getElementById('systemLog');
+    const typeLabels = { info: 'INFO', delegate: 'DELEGATE', complete: 'COMPLETE', error: 'ERROR', comm: 'COMM' };
+    const typeColors = { info: '#00e5a0', delegate: '#f59e0b', complete: '#06b6d4', error: '#f43f5e', comm: '#a78bfa' };
+
+    const entry = document.createElement('div');
+    entry.className = `log-entry log-${type}`;
+    const time = new Date().toLocaleTimeString();
+    entry.innerHTML = `<span style="color:${typeColors[type]};">[${typeLabels[type]}]</span> <span style="color:var(--muted);">${time}</span> ${message}`;
+    log.appendChild(entry);
+    log.scrollTop = log.scrollHeight;
+}
+
+// Agent node animate karo jab task assign ho
+function animateAgentNode(agentId) {
+    const node = document.getElementById(`agent-${agentId}`);
+    if (node) {
+        node.classList.remove('active');
+        void node.offsetWidth; // Force reflow
+        node.classList.add('active');
+    }
+    // Particle bhi spawn karo
+    spawnParticle('coordinator', agentId, agents.get(agentId).color);
+}
+
+// Toast notification
+function showToast(message, color) {
+    const container = document.getElementById('toastContainer');
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.innerHTML = `<div style="width:8px; height:8px; border-radius:50%; background:${color || '#00e5a0'}; flex-shrink:0;"></div>${message}`;
+    container.appendChild(toast);
+    setTimeout(() => {
+        toast.classList.add('toast-out');
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+// =============================================
+// STEP 10: COMMUNICATION LAYER LISTENER
+// Jab bhi message aaye, particles spawn karo
+// =============================================
+commLayer.onMessage((msg) => {
+    if (msg.from !== 'system') {
+        spawnParticle(msg.from, msg.to, agents.get(msg.from)?.color || '#00e5a0');
+    }
+});
+
+// =============================================
+// STEP 11: INITIALIZATION
+// =============================================
+window.addEventListener('load', () => {
+    renderAgents();
+    renderStats();
+    renderTaskQueue();
+    resizeCanvas();
+    drawCanvas();
+    addLog('info', 'All 5 agents initialized and ready for task delegation.');
+});
+
+window.addEventListener('resize', () => {
+    resizeCanvas();
+});
+
+// Keyboard shortcut — Enter se task submit
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && document.activeElement.id === 'taskName') {
+        submitTask();
+    }
+});
+</script>
+</body>
+</html>
